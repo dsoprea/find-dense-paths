@@ -15,10 +15,18 @@ It simply calculates the mean, the standard deviation, and determines which dire
 
 # Install
 
+To get:
+
 ```
 $ go get github.com/dsoprea/go-find-dense-paths/command/go-find-dense-paths
+```
+
+To build:
+
+```
 $ go build github.com/dsoprea/go-find-dense-paths/command/go-find-dense-paths
 ```
+
 
 # Usage
 

@@ -7,6 +7,7 @@ import (
     "sort"
 
     "encoding/csv"
+    "encoding/json"
     "path/filepath"
 
     "github.com/dsoprea/go-logging"
@@ -22,12 +23,19 @@ type parameters struct {
     JustBig   bool     `long:"big" description:"Just show big folders."`
     Verbose   bool     `long:"verbose" description:"Print extra information."`
     PrintAll  bool     `long:"print-all" description:"Print all directories found first."`
+    Json      bool     `long:"json" description:"Print as JSON instead of CSV."`
 }
 
 var (
     arguments = new(parameters)
     wf        filepath.WalkFunc
 )
+
+type outputItem struct {
+    Polarity int    `json:"polarity,omitempty"`
+    Path     string `json:"path"`
+    Count    int    `json:"count"`
+}
 
 func main() {
     p := flags.NewParser(arguments, flags.Default)
@@ -121,44 +129,86 @@ func main() {
 
     if arguments.Verbose == true {
         fmt.Printf("Threshold: %d\n", threshold)
+        fmt.Printf("\n")
     }
 
-    fmt.Printf("\n")
+    if arguments.Json == true {
+        items := make([]outputItem, 0)
+        for _, binPath := range paths {
+            count := bins[binPath]
+            if arguments.JustSmall == true && count < threshold {
+                item := outputItem{
+                    Path:  binPath,
+                    Count: count,
+                }
 
-    w := csv.NewWriter(os.Stdout)
-    for _, binPath := range paths {
-        count := bins[binPath]
-        var record []string
-        if arguments.JustSmall == true && count < threshold {
-            record = make([]string, 2)
-            record[0] = binPath
-            record[1] = fmt.Sprintf("%d", count)
-        } else if arguments.JustBig == true && count >= threshold {
-            record = make([]string, 2)
-            record[0] = binPath
-            record[1] = fmt.Sprintf("%d", count)
-        } else if arguments.JustSmall == false && arguments.JustBig == false {
-            var sizeBracket int
-            if count < threshold {
-                sizeBracket = -1
-            } else if count > threshold {
-                sizeBracket = 1
+                items = append(items, item)
+            } else if arguments.JustBig == true && count >= threshold {
+                item := outputItem{
+                    Path:  binPath,
+                    Count: count,
+                }
+
+                items = append(items, item)
+            } else if arguments.JustSmall == false && arguments.JustBig == false {
+                var sizeBracket int
+                if count < threshold {
+                    sizeBracket = -1
+                } else if count > threshold {
+                    sizeBracket = 1
+                }
+
+                item := outputItem{
+                    Polarity: sizeBracket,
+                    Path:     binPath,
+                    Count:    count,
+                }
+
+                items = append(items, item)
+            }
+        }
+
+        je := json.NewEncoder(os.Stdout)
+        je.SetIndent("", "  ")
+
+        err = je.Encode(items)
+        log.PanicIf(err)
+    } else {
+        w := csv.NewWriter(os.Stdout)
+        for _, binPath := range paths {
+            count := bins[binPath]
+            var record []string
+            if arguments.JustSmall == true && count < threshold {
+                record = make([]string, 2)
+                record[0] = binPath
+                record[1] = fmt.Sprintf("%d", count)
+            } else if arguments.JustBig == true && count >= threshold {
+                record = make([]string, 2)
+                record[0] = binPath
+                record[1] = fmt.Sprintf("%d", count)
+            } else if arguments.JustSmall == false && arguments.JustBig == false {
+                var sizeBracket int
+                if count < threshold {
+                    sizeBracket = -1
+                } else if count > threshold {
+                    sizeBracket = 1
+                }
+
+                record = make([]string, 3)
+                record[0] = fmt.Sprintf("%d", sizeBracket)
+                record[1] = binPath
+                record[2] = fmt.Sprintf("%d", count)
             }
 
-            record = make([]string, 2)
-            record[0] = fmt.Sprintf("%d", sizeBracket)
-            record[1] = binPath
-            record[2] = fmt.Sprintf("%d", count)
+            if record != nil {
+                err = w.Write(record)
+                log.PanicIf(err)
+            }
         }
 
-        if record != nil {
-            err = w.Write(record)
-            log.PanicIf(err)
-        }
+        w.Flush()
+
+        err = w.Error()
+        log.PanicIf(err)
     }
-
-    w.Flush()
-
-    err = w.Error()
-    log.PanicIf(err)
 }
